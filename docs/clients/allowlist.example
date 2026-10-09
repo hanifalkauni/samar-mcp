@@ -1,0 +1,10 @@
+# Contoh egress allowlist Samar.
+# Satu host per baris. Baris diawali '#' = komentar.
+# Salin ke ~/.samar/allowlist (global) atau ./.samar/allowlist (per-project).
+#
+# Hanya host DI SINI yang boleh menerima secret yang di-unmask via
+# samar_execute_command. Host lain diblokir (fail-closed).
+
+# contoh:
+# api.internal.example.com
+# registry.corp.local

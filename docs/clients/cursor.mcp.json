@@ -1,0 +1,15 @@
+{
+  "//file": "Cursor MCP config. Lokasi: .cursor/mcp.json (project) ATAU ~/.cursor/mcp.json (global). Cursor TIDAK memakai field 'disabled'/'autoApprove' (itu khas Kiro).",
+  "//path": "Ganti /ABS/PATH/samar dengan path absolut binary.",
+  "//disable": "Matikan tool filesystem/terminal bawaan Cursor di Settings > Features/Tools agar I/O dipaksa lewat Samar. Mekanisme ini di UI, bukan di file ini.",
+  "//env": "Cursor memakai sintaks ${env:VAR} untuk membaca environment host.",
+  "mcpServers": {
+    "samar": {
+      "command": "/ABS/PATH/samar",
+      "args": [],
+      "env": {
+        "SAMAR_STRICT_ALLOWLIST": "0"
+      }
+    }
+  }
+}

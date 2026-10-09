@@ -1,0 +1,17 @@
+# Binaries
+/bin/
+/dist/
+*.exe
+
+# Test / coverage
+*.out
+*.test
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Samar runtime (zero-persistence; audit logs are per-session)
+.safeenv/
+.samar/

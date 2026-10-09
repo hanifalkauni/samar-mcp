@@ -1,0 +1,14 @@
+{
+  "//file": "Claude Code: ~/.claude/settings.json (gabungkan ke dalam blok mcpServers yang ada). Claude Desktop: claude_desktop_config.json. Shape mcpServers sama; TIDAK ada 'disabled'/'autoApprove' (khas Kiro).",
+  "//path": "Ganti /ABS/PATH/samar dengan path absolut binary.",
+  "//disable": "Batasi tool bawaan (Read/Write/Bash) lewat permission settings Claude Code (deny/allow list tool) agar I/O lewat Samar.",
+  "mcpServers": {
+    "samar": {
+      "command": "/ABS/PATH/samar",
+      "args": [],
+      "env": {
+        "SAMAR_STRICT_ALLOWLIST": "0"
+      }
+    }
+  }
+}

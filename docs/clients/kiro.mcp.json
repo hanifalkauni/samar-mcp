@@ -1,0 +1,17 @@
+{
+  "//file": "Kiro MCP config. Lokasi: .kiro/settings/mcp.json (workspace) ATAU ~/.kiro/settings/mcp.json (user). Buka via Command Palette: 'Kiro: Open workspace MCP config (JSON)'.",
+  "//path": "Ganti /ABS/PATH/samar dengan path absolut binary.",
+  "//disable": "PENTING: untuk memaksa I/O lewat Samar, batasi tool filesystem/exec BAWAAN Kiro lewat permissions/agent config (lihat docs/CLIENT_CONFIG.md). Field 'disabledTools' di bawah hanya menonaktifkan tool SERVER MCP, bukan tool bawaan Kiro.",
+  "//env": "Env expansion Kiro memakai sintaks ${VAR} (bukan ${env:VAR}).",
+  "mcpServers": {
+    "samar": {
+      "command": "/ABS/PATH/samar",
+      "args": [],
+      "env": {
+        "SAMAR_STRICT_ALLOWLIST": "0"
+      },
+      "disabled": false,
+      "autoApprove": ["samar_read_file", "samar_get_env"]
+    }
+  }
+}
