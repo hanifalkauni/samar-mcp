@@ -34,8 +34,8 @@ jobs:
       - name: Run unit & adversarial tests
         run: go test -v ./...
 
+      - name: Build Samar binary
+        run: go build -v -o bin/ ./cmd/samar
+
       - name: Run canary leak harness
         run: go run ./test/canary
-
-      - name: Build Samar binary
-        run: go build -v -o build-check ./cmd/samar

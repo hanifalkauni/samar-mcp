@@ -106,15 +106,50 @@ type rpcResp struct {
 	} `json:"result"`
 }
 
-func main() {
-	bin := filepath.Join("bin", "samar.exe")
-	if runtime.GOOS != "windows" {
-		bin = filepath.Join("bin", "samar")
+func findOrBuildBinary() (string, func(), error) {
+	if custom := os.Getenv("SAMAR_BIN"); custom != "" {
+		if _, err := os.Stat(custom); err == nil {
+			return custom, func() {}, nil
+		}
 	}
-	if _, err := os.Stat(bin); err != nil {
-		fmt.Fprintf(os.Stderr, "canary: binary tak ditemukan di %s — build dulu: go build -o %s ./cmd/samar\n", bin, bin)
+
+	defaultBin := filepath.Join("bin", "samar")
+	if runtime.GOOS == "windows" {
+		defaultBin = filepath.Join("bin", "samar.exe")
+	}
+	if _, err := os.Stat(defaultBin); err == nil {
+		return defaultBin, func() {}, nil
+	}
+
+	// Otomatis build binary sementara bila belum ada
+	tmpDir, err := os.MkdirTemp("", "samar-canary-bin-")
+	if err != nil {
+		return "", nil, fmt.Errorf("gagal buat tempdir: %w", err)
+	}
+	targetBin := filepath.Join(tmpDir, "samar")
+	if runtime.GOOS == "windows" {
+		targetBin = filepath.Join(tmpDir, "samar.exe")
+	}
+
+	buildCmd := exec.Command("go", "build", "-o", targetBin, "./cmd/samar")
+	if out, err := buildCmd.CombinedOutput(); err != nil {
+		os.RemoveAll(tmpDir)
+		return "", nil, fmt.Errorf("gagal build binary otomatis (%v): %s", err, string(out))
+	}
+
+	cleanup := func() {
+		os.RemoveAll(tmpDir)
+	}
+	return targetBin, cleanup, nil
+}
+
+func main() {
+	bin, cleanupBin, err := findOrBuildBinary()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "canary: %v\n", err)
 		os.Exit(2)
 	}
+	defer cleanupBin()
 
 	dir, err := os.MkdirTemp("", "samar-canary-")
 	if err != nil {
