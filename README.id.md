@@ -10,17 +10,9 @@
 
 ---
 
-Privacy & security middleware MCP: masking kredensial sebelum konten mencapai
-LLM (inbound), dengan vault token in-memory (zero-persistence). Rasionale desain
-(historis): [`docs/PRD.md`](./docs/PRD.md) — kode adalah sumber kebenaran.
+Privacy & security middleware untuk Model Context Protocol (MCP). Samar mencegat dan menyamarkan (*masking*) kredensial sensitif (API key, password, private key, URL database, dan variabel `.env`) sebelum masuk ke konteks LLM (*inbound*), menggantikannya dengan token reversibel deterministik berbasis *ephemeral vault* di memori (*zero-persistence*). Operasi *outbound* (penulisan file dan eksekusi perintah shell) memulihkan token kembali ke nilai aslinya secara aman di bawah pengawasan *egress allowlist* dan kebijakan *fail-closed*.
 
-> **Status: v1.1.0** — M0 (inbound) + M1 (outbound + policy) + M2 (hardening:
-> adversarial corpus, audit log, strict allowlist) + M3 (integrasi: template
-> config per client, rilis binary multi-platform). Tambahan pasca-M3:
-> human-in-the-loop konfirmasi (3 mode: off default / elicit / deny) dan audit
-> coverage penuh (7 event). Latar belakang keputusan desain ada di
-> [`docs/PRD.md`](./docs/PRD.md) (dokumen historis, tidak lagi diselaraskan —
-> bila berbeda, kode yang benar).
+> **Versi: v1.1.0** — Middleware privasi dan keamanan siap produksi dengan fitur *masking* kredensial *inbound*, restorasi *outbound fail-closed*, proteksi *egress* jaringan, konfirmasi *human-in-the-loop* (`off`, `elicit`, `deny`), dan log audit kriptografis HMAC.
 
 ---
 

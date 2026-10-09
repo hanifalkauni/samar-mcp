@@ -10,15 +10,9 @@
 
 ---
 
-Privacy & security middleware for Model Context Protocol (MCP): masks credentials before content reaches the LLM (inbound), backed by an in-memory ephemeral vault (zero-persistence). Historical design rationale: [`docs/PRD.md`](./docs/PRD.md) — code is the source of truth.
+Privacy & security middleware for the Model Context Protocol (MCP). Samar intercepts and masks sensitive credentials (API keys, passwords, private keys, database URLs, and `.env` variables) before they reach the LLM context (inbound), replacing them with deterministic reversible tokens backed by an in-memory ephemeral vault (zero-persistence). Outbound operations (file writes and command executions) safely restore tokens to real values while enforcing strict egress allowlists and fail-closed policies.
 
-> **Status: v1.1.0** — M0 (inbound) + M1 (outbound + policy) + M2 (hardening:
-> adversarial corpus, audit log, strict allowlist) + M3 (integration: per-client
-> config templates, multi-platform release binaries). Post-M3 additions:
-> human-in-the-loop confirmation (3 modes: off default / elicit / deny) and full
-> audit coverage (7 events). Design background and rationale are documented in
-> [`docs/PRD.md`](./docs/PRD.md) (frozen historical document, no longer synchronized —
-> if they differ, the code prevails).
+> **Version: v1.1.0** — Production-ready privacy middleware featuring inbound credential masking, fail-closed outbound restoration, network egress policy enforcement, human-in-the-loop confirmation (`off`, `elicit`, `deny`), and cryptographic HMAC audit logging.
 
 ---
 
