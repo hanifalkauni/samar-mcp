@@ -24,7 +24,7 @@
 > | Versi dokumen (beku) | 6.2 |
 > | Dibekukan pada | 2026-10-08 |
 > | Author | @hanifalkauni |
-> | Produk | SafeEnv MCP Server (implementasi v1.0.0) |
+> | Produk | SafeEnv MCP Server (sekarang **Samar MCP Server**, v1.1.0+) |
 
 ---
 

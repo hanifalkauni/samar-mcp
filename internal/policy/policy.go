@@ -43,13 +43,13 @@ func New(a HostAllower) *Policy {
 }
 
 // tokenAware adalah kontrak minimal untuk mengenali apakah string mengandung
-// token SafeEnv. Dipenuhi oleh restorer/vault via TokenPattern.
+// token Samar. Dipenuhi oleh restorer/vault via TokenPattern.
 type tokenAware interface {
 	TokenPattern() (prefix, suffix string)
 }
 
 // EvaluateCommand memeriksa command yang (masih) mengandung token. containsToken
-// menandai apakah command membawa token SafeEnv sama sekali; bila tidak, tidak
+// menandai apakah command membawa token Samar sama sekali; bila tidak, tidak
 // ada secret yang berisiko dan policy mengizinkan.
 //
 // Aturan (fail-closed):

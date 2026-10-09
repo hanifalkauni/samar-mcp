@@ -1,4 +1,4 @@
-// Package audit menulis log kejadian keamanan SafeEnv (PRD §10).
+// Package audit menulis log kejadian keamanan Samar (PRD §10).
 //
 // Prinsip mengikat:
 //   - Zero plaintext: nilai asli secret TIDAK PERNAH ditulis. Hanya

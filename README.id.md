@@ -288,10 +288,15 @@ Tidak. Samar mengimplementasikan *lazy reload* otomatis (interval 5 detik berdas
 Tidak. Log audit disimpan di `.samar/audit/<timestamp>.jsonl` dengan HMAC/hash-chain anti-tamper. Log ini hanya mencatat metadata event (tipe event, nama tool, keputusan policy, alasan, dan aktor), tidak pernah mencatat secret mentah.
 </details>
 
+## 🤝 Kontribusi & Keamanan
+
+- **Kontribusi**: Panduan pengembangan lokal, alur pengujian, dan pedoman pull request tersedia di [CONTRIBUTING.md](./CONTRIBUTING.md).
+- **Kebijakan Keamanan**: Prosedur pelaporan kerentanan dan cakupan threat model dapat dilihat di [SECURITY.md](./SECURITY.md).
+
 ---
 
 ## 📄 Lisensi
 
 SPDX-License-Identifier: MIT
 
-Proyek ini dilisensikan di bawah lisensi MIT.
+Proyek ini dilisensikan di bawah [MIT License](./LICENSE).

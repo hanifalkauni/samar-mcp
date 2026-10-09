@@ -1,5 +1,5 @@
 // Package adversarial menjalankan corpus & serangan red-team terhadap stack
-// SafeEnv nyata (detector+vault+masking+restore+policy). Memenuhi rencana uji
+// Samar nyata (detector+vault+masking+restore+policy). Memenuhi rencana uji
 // PRD §12 dan mengukur metrik PRD §11.
 package adversarial
 

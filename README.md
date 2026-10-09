@@ -279,10 +279,15 @@ No. Samar utilizes automatic *hot lazy reloading* (checked every 5 seconds via f
 No. Session audit logs in `.samar/audit/<timestamp>.jsonl` are cryptographically chained (HMAC/hash-chain). They only record event metadata (event type, tool name, policy decision, reason, actor, and token identifier) — raw secrets are never written.
 </details>
 
+## 🤝 Contributing & Security
+
+- **Contributing**: Please review [CONTRIBUTING.md](./CONTRIBUTING.md) for local development guidelines, testing workflows, and pull request procedures.
+- **Security Policy**: For vulnerability disclosure and security scope, refer to [SECURITY.md](./SECURITY.md).
+
 ---
 
 ## 📄 License
 
 SPDX-License-Identifier: MIT
 
-This project is licensed under the MIT License.
+This project is licensed under the [MIT License](./LICENSE).

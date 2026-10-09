@@ -2,7 +2,7 @@
 // placeholder di dalam konten dan menggantinya dengan secret asli dari vault.
 //
 // Prinsip fail-closed (PRD §7): bila ditemukan token yang BENTUKNYA seperti
-// placeholder SafeEnv tetapi tidak ada di vault (terpotong/termutasi oleh LLM),
+// placeholder Samar tetapi tidak ada di vault (terpotong/termutasi oleh LLM),
 // restorasi DIBATALKAN dengan error — tidak pernah mengeksekusi/menulis parsial.
 package restore
 
