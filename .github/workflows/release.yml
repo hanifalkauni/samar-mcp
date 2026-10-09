@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Release Binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          check-latest: true
+
+      - name: Build multi-platform binaries
+        run: |
+          mkdir -p dist
+          targets=(
+            "linux/amd64/samar-linux-amd64"
+            "linux/arm64/samar-linux-arm64"
+            "darwin/amd64/samar-darwin-amd64"
+            "darwin/arm64/samar-darwin-arm64"
+            "windows/amd64/samar-windows-amd64.exe"
+          )
+
+          for target in "${targets[@]}"; do
+            IFS="/" read -r os arch filename <<< "$target"
+            echo "Building $filename for $os/$arch..."
+            GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "dist/$filename" ./cmd/samar
+          done
+
+      - name: Generate Checksums
+        working-directory: dist
+        run: |
+          sha256sum * > SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist/* --title "Samar ${{ github.ref_name }}" --generate-notes
