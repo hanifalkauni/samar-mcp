@@ -12,7 +12,7 @@
 
 Samar adalah server MCP yang menyamarkan kredensial terdeteksi saat client membaca file atau environment melalui Samar. Nilainya diganti token reversibel yang disimpan di memori. Saat token dipakai untuk menulis file atau menjalankan shell command, Samar memulihkan nilai aslinya. Secara default, shell command yang membawa token meminta persetujuan melalui MCP elicitation. Pemeriksaan egress membaca teks command, jadi tidak dapat menjamin bahwa command tidak akan memakai jaringan.
 
-> **Versi: v1.3.0.** Shell command bertoken meminta persetujuan secara default. Pemeriksaan egress bersifat heuristik, sedangkan audit log memakai rantai hash SHA-256 tanpa kunci.
+> **Versi: v1.4.0.** Shell command bertoken meminta persetujuan secara default. Pemeriksaan egress bersifat heuristik, sedangkan audit log memakai rantai hash SHA-256 tanpa kunci.
 
 ---
 
@@ -289,6 +289,23 @@ Jika token diubah atau terpotong, Samar tidak dapat memulihkannya. `samar_write_
 <summary><b>Mengapa AI masih bisa membaca nilai asli di file .env saya?</b></summary>
 
 Samar hanya menyamarkan pembacaan yang melewati tool-nya. Atur **deny-selektif** untuk tool file bawaan client (seperti `fs_read` atau `Read`) agar tool tersebut tidak dapat membaca file sensitif langsung. Lihat [`docs/CLIENT_CONFIG.id.md`](./docs/CLIENT_CONFIG.id.md).
+</details>
+
+<details>
+<summary><b>Mengapa `samar_execute_command` gagal dengan error "command bertoken tidak disetujui manusia"?</b></summary>
+
+Mulai v1.4.0, Samar menerapkan prinsip *safe-by-default* di mana setiap perintah shell yang membawa secret hasil restorasi meminta persetujuan manusia melalui dialog **MCP elicitation**.
+
+Sebagian besar client MCP saat ini (seperti Cursor, Kiro, Claude Desktop, dsb.) belum mendukung fitur dialog elicitation dari server MCP. Karena Samar berprinsip *fail-closed*, permintaan yang tidak direspons atau tidak didukung oleh client akan otomatis ditolak.
+
+**Solusi:**
+Atur variabel lingkungan `SAMAR_REQUIRE_CONFIRM=off` pada konfigurasi MCP client Anda:
+```json
+"env": {
+  "SAMAR_REQUIRE_CONFIRM": "off"
+}
+```
+*Catatan:* Opsi `"off"` secara eksplisit mengizinkan eksekusi tanpa prompt dialog, namun **filter egress allowlist Samar tetap aktif** memblokir host jaringan yang tidak terdaftar.
 </details>
 
 <details>

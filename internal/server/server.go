@@ -287,7 +287,7 @@ func (s *Samar) handleExecuteCommand(ctx context.Context, req mcp.CallToolReques
 	if gr.NeedsConfirmation {
 		if !s.deps.Confirm.Confirm(ctx, command, gr.Hosts) {
 			s.deps.Audit.Event("policy_block", "samar_execute_command", "deny", "human_denied")
-			return mcp.NewToolResultError("eksekusi dibatalkan: command bertoken tidak disetujui manusia"), nil
+			return mcp.NewToolResultError("eksekusi dibatalkan: command bertoken tidak disetujui manusia (bila client MCP Anda belum mendukung dialog konfirmasi elicitation, atur env SAMAR_REQUIRE_CONFIRM=off pada konfigurasi MCP untuk mengizinkan)"), nil
 		}
 		s.deps.Audit.Event("consent", "samar_execute_command", "allow", "human_approved")
 	}

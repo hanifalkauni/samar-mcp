@@ -12,7 +12,7 @@
 
 Samar is an MCP server that masks detected credentials when a client reads files or environment variables through Samar. It replaces them with reversible tokens held in memory. When a token is used in a file write or shell command, Samar restores the original value. By default, shell commands containing tokens require approval through MCP elicitation. Egress checks inspect command text, so they cannot guarantee that a command will not use the network.
 
-> **Version: v1.3.0.** Token-bearing shell commands require approval by default. Egress checks are heuristic, and the audit log uses an unkeyed SHA-256 hash chain.
+> **Version: v1.4.0.** Token-bearing shell commands require approval by default. Egress checks are heuristic, and the audit log uses an unkeyed SHA-256 hash chain.
 
 ---
 
@@ -288,6 +288,23 @@ If a token is changed or cut off, Samar cannot restore it. `samar_write_file` an
 <summary><b>Why can my AI assistant still read raw secrets from my .env file?</b></summary>
 
 Samar only masks reads made through its tools. Configure **selective-deny** for the client's built-in file tools (such as `fs_read` or `Read`) so they cannot read sensitive files directly. See [`docs/CLIENT_CONFIG.md`](./docs/CLIENT_CONFIG.md).
+</details>
+
+<details>
+<summary><b>Why does `samar_execute_command` fail with "command bertoken tidak disetujui manusia"?</b></summary>
+
+Starting with v1.4.0, Samar requires approval by default via **MCP elicitation** before restoring secrets into shell commands.
+
+Most MCP clients today (such as Cursor, Kiro, or Claude Desktop) do not yet implement server-initiated elicitation dialogs. Because Samar enforces a strict *fail-closed* policy, any request that goes unprompted or unsupported by the client is automatically rejected.
+
+**Solution:**
+Set `SAMAR_REQUIRE_CONFIRM=off` in your MCP client server configuration:
+```json
+"env": {
+  "SAMAR_REQUIRE_CONFIRM": "off"
+}
+```
+*Note:* The `"off"` option explicitly allows command execution without elicitation prompts, while **Samar's egress allowlist guard remains fully active** to block non-allowlisted network destinations.
 </details>
 
 <details>
