@@ -77,24 +77,45 @@ func TestRegex_GenericAssignmentMasksOnlyValue(t *testing.T) {
 	}
 }
 
+func TestRegex_GenericAssignmentMasksWholeQuotedValue(t *testing.T) {
+	r := NewRegex()
+	cases := []struct {
+		content string
+		want    string
+	}{
+		{`{"PASSWORD": "correct horse battery staple #1"}`, `correct horse battery staple #1`},
+		{`DB_PASSWORD='correct horse battery staple #1'`, `correct horse battery staple #1`},
+		{`API_TOKEN="first \"quoted\" value"`, `first \"quoted\" value`},
+	}
+	for _, tc := range cases {
+		fs := r.Detect("app.conf", tc.content)
+		if len(fs) != 1 {
+			t.Fatalf("expected one secret span in %q, got %d", tc.content, len(fs))
+		}
+		if got := fs[0].Value(tc.content); got != tc.want {
+			t.Errorf("masked span for %q = %q, want %q", tc.content, got, tc.want)
+		}
+	}
+}
+
 func TestRegex_ExpandedPatterns(t *testing.T) {
 	r := NewRegex()
 	cases := map[string]string{
-		"gitlab":        "glpat-ABCDEFGHIJ1234567890",
-		"anthropic":     "sk-ant-api03-ABCDEFGHIJ1234567890",
-		"npm":           "npm_abcdefghijklmnopqrstuvwxyz0123456789",
-		"sendgrid":      "SG.ABCDEFGHIJKLMNOPQRSTUV.ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghij",
-		"huggingface":   "hf_ABCDEFGHIJKLMNOPQRSTUVWXYZ01234567",
-		"basic_auth":    "https://user:p4ssw0rd@internal.example.com/path",
-		"access_key":    "access_key: zzzyyyxxx000",
-		"client_secret":     "client_secret = abcdef123456",
-		"authorization":     `Authorization: Bearer abcDEF123456tokenvalue`,
-		"json_conf_token":   `"CONF_TOKEN": "ODg0Njk2NTI2NTIzOmConfluencePatSecret"`,
-		"json_pat":          `"CONFLUENCE_PAT": "my-secret-pat-value-999"`,
-		"atlassian_token":   `ATATT3xFfGF0abcdef1234567890ABCDEF123456`,
-		"custom_header":     `X-API-Key: my_custom_header_secret_key_123`,
-		"cli_flag_pat":      `samar --pat cli_secret_pat_value`,
-		"curl_basic_u":      `curl -u admin:curlBasicSecretPass123 https://confluence.corp/rest/api`,
+		"gitlab":          "glpat-ABCDEFGHIJ1234567890",
+		"anthropic":       "sk-ant-api03-ABCDEFGHIJ1234567890",
+		"npm":             "npm_abcdefghijklmnopqrstuvwxyz0123456789",
+		"sendgrid":        "SG.ABCDEFGHIJKLMNOPQRSTUV.ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghij",
+		"huggingface":     "hf_ABCDEFGHIJKLMNOPQRSTUVWXYZ01234567",
+		"basic_auth":      "https://user:p4ssw0rd@internal.example.com/path",
+		"access_key":      "access_key: zzzyyyxxx000",
+		"client_secret":   "client_secret = abcdef123456",
+		"authorization":   `Authorization: Bearer abcDEF123456tokenvalue`,
+		"json_conf_token": `"CONF_TOKEN": "ODg0Njk2NTI2NTIzOmConfluencePatSecret"`,
+		"json_pat":        `"CONFLUENCE_PAT": "my-secret-pat-value-999"`,
+		"atlassian_token": `ATATT3xFfGF0abcdef1234567890ABCDEF123456`,
+		"custom_header":   `X-API-Key: my_custom_header_secret_key_123`,
+		"cli_flag_pat":    `samar --pat cli_secret_pat_value`,
+		"curl_basic_u":    `curl -u admin:curlBasicSecretPass123 https://confluence.corp/rest/api`,
 	}
 	for name, content := range cases {
 		if len(r.Detect("f.txt", content)) == 0 {

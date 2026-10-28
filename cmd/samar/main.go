@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -54,36 +55,39 @@ func getEnvWithFallback(primary, fallback string) string {
 }
 
 // confirmer menegakkan human-in-the-loop berdasarkan env SAMAR_REQUIRE_CONFIRM (atau SAFEENV_REQUIRE_CONFIRM):
-//   - "" (default) / "off" : auto-approve. Allowlist fail-closed TETAP jadi
-//                lapisan utama (host asing tetap diblokir). Konfirmasi adalah
-//                defense-in-depth kedua yang di-OPT-IN karena elicitation belum
-//                didukung luas oleh client MCP. Peringatan dicetak ke stderr.
-//   - "elicit" : minta persetujuan interaktif ke client via MCP elicitation;
-//                fail-closed bila client tak mendukung / error / bukan "accept".
-//   - "deny"   : tolak SEMUA aksi jaringan bertoken tanpa prompt (fail-closed).
+//   - "" (default) / "elicit": minta persetujuan via MCP elicitation sebelum
+//                command bertoken; kegagalan/tidak didukung berarti ditolak.
+//   - "off" : auto-approve secara eksplisit; hanya gunakan bila command tepercaya.
+//   - "deny"   : tolak SEMUA command bertoken tanpa prompt (fail-closed).
 type confirmer struct {
 	mode string
 	srv  *mcpserver.MCPServer // untuk mode elicit; di-set setelah server dibuat
 }
 
 func newConfirmer() *confirmer {
-	return &confirmer{mode: getEnvWithFallback("SAMAR_REQUIRE_CONFIRM", "SAFEENV_REQUIRE_CONFIRM")}
+	mode := getEnvWithFallback("SAMAR_REQUIRE_CONFIRM", "SAFEENV_REQUIRE_CONFIRM")
+	if mode == "" {
+		mode = "elicit"
+	}
+	return &confirmer{mode: mode}
 }
 
-// confirmationOff true bila konfirmasi manusia tidak aktif (default/off).
+// confirmationOff true hanya bila pengguna secara eksplisit menonaktifkan prompt.
 func (c *confirmer) confirmationOff() bool {
-	return c.mode == "" || c.mode == "off"
+	return c.mode == "off"
 }
 
 func (c *confirmer) Confirm(ctx context.Context, command string, hosts []string) bool {
 	switch c.mode {
+	case "off":
+		return true
 	case "deny":
 		return false
 	case "elicit":
 		if c.srv == nil {
 			return false // tak bisa minta konfirmasi -> fail-closed
 		}
-		msg := fmt.Sprintf("Samar: perintah akan mengirim secret (ter-unmask) ke host %v. Izinkan?", hosts)
+		msg := fmt.Sprintf("Samar: command berikut membawa secret yang akan direstorasi sebelum dijalankan:\n%s\nHost jaringan yang terdeteksi: %v. Daftar kosong tidak membuktikan command tidak memakai jaringan. Izinkan?", command, hosts)
 		res, err := c.srv.RequestElicitation(ctx, mcp.ElicitationRequest{
 			Params: mcp.ElicitationParams{
 				Mode:            "form",
@@ -95,14 +99,15 @@ func (c *confirmer) Confirm(ctx context.Context, command string, hosts []string)
 			return false // elicitation gagal / tak didukung -> fail-closed
 		}
 		return res.Action == mcp.ElicitationResponseActionAccept
-	default: // "" (default) dan "off": auto-approve (allowlist tetap fail-closed).
-		return true
+	default: // Nilai kosong atau tidak dikenal fail-closed.
+		return false
 	}
 }
 
 // auditAdapter menautkan audit.Logger ke interface server.Auditor.
 type auditAdapter struct {
-	log *audit.Logger
+	log      *audit.Logger
+	warnOnce sync.Once
 }
 
 // newAuditor menginisialisasi audit logger per sesi.
@@ -119,13 +124,17 @@ func newAuditor() server.Auditor {
 
 // Event memformat panggilan server menjadi audit.Event.
 func (a *auditAdapter) Event(eventType, tool, decision, reason string) {
-	_ = a.log.Log(audit.Event{
+	if err := a.log.Log(audit.Event{
 		EventType: audit.EventType(eventType),
 		Tool:      tool,
 		Decision:  decision,
 		Reason:    reason,
 		Actor:     "llm_client",
-	})
+	}); err != nil {
+		a.warnOnce.Do(func() {
+			fmt.Fprintf(os.Stderr, "samar: audit logging failed; audit events may be missing: %v\n", err)
+		})
+	}
 }
 
 func main() {
@@ -215,12 +224,11 @@ ENVIRONMENT
                                Default: ~/.samar/audit/<project-slug>-<hash8>/
   SAMAR_STRICT_ALLOWLIST=1     Egress allowlist strict: per-project mempersempit
                                global (global ∩ project). Default: union.
-  SAMAR_REQUIRE_CONFIRM        Konfirmasi manusia untuk kirim secret ke jaringan:
-                               "" / "off" (DEFAULT) = auto-approve (allowlist tetap
-                               fail-closed; peringatan dicetak ke stderr).
-                               "elicit" = minta persetujuan via MCP elicitation
-                               (fail-closed bila client tak mendukung).
-                               "deny" = selalu tolak aksi jaringan bertoken.
+	SAMAR_REQUIRE_CONFIRM        Konfirmasi untuk command yang membawa token:
+	                               "" / "elicit" (DEFAULT) = minta persetujuan MCP
+	                               (fail-closed bila client tak mendukung).
+	                               "off" = auto-approve secara eksplisit (berisiko).
+	                               "deny" = selalu tolak command bertoken.
   SAMAR_ENTROPY=1              Aktifkan deteksi entropi (OPT-IN): tangkap secret
                                berentropi tinggi tanpa kata-kunci. Default nonaktif
                                (bisa menambah false-positive pada hash/UUID/base64).
@@ -315,7 +323,7 @@ func run() error {
 
 	conf := newConfirmer()
 	if conf.confirmationOff() {
-		fmt.Fprintln(os.Stderr, "samar: KONFIRMASI MANUSIA NONAKTIF (default). Secret ke host yang SUDAH di allowlist dikirim tanpa prompt. Allowlist tetap memblokir host asing. Untuk lapisan konfirmasi: set SAMAR_REQUIRE_CONFIRM=elicit (butuh client yang mendukung MCP elicitation).")
+		fmt.Fprintln(os.Stderr, "samar: KONFIRMASI MANUSIA DINONAKTIFKAN SECARA EKSPLISIT. Semua command bertoken berjalan tanpa persetujuan; pemeriksaan host adalah heuristik dan dapat melewatkan jalur jaringan. Gunakan hanya untuk command tepercaya.")
 	}
 
 	// Safety-net runtime: verifikasi terakhir bahwa output tool tak membocorkan

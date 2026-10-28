@@ -10,15 +10,15 @@
 
 ---
 
-Privacy & security middleware untuk Model Context Protocol (MCP). Samar mencegat dan menyamarkan (*masking*) kredensial sensitif (API key, password, private key, URL database, dan variabel `.env`) sebelum masuk ke konteks LLM (*inbound*), menggantikannya dengan token reversibel deterministik berbasis *ephemeral vault* di memori (*zero-persistence*). Operasi *outbound* (penulisan file dan eksekusi perintah shell) memulihkan token kembali ke nilai aslinya secara aman di bawah pengawasan *egress allowlist* dan kebijakan *fail-closed*.
+Samar adalah server MCP yang menyamarkan kredensial terdeteksi saat client membaca file atau environment melalui Samar. Nilainya diganti token reversibel yang disimpan di memori. Saat token dipakai untuk menulis file atau menjalankan shell command, Samar memulihkan nilai aslinya. Secara default, shell command yang membawa token meminta persetujuan melalui MCP elicitation. Pemeriksaan egress membaca teks command, jadi tidak dapat menjamin bahwa command tidak akan memakai jaringan.
 
-> **Versi: v1.2.1** — Middleware privasi dan keamanan siap produksi dengan fitur *masking* kredensial *inbound*, restorasi *outbound fail-closed*, proteksi *egress* jaringan, konfirmasi *human-in-the-loop* (`off`, `elicit`, `deny`), dan log audit kriptografis HMAC.
+> **Versi: v1.3.0.** Shell command bertoken meminta persetujuan secara default. Pemeriksaan egress bersifat heuristik, sedangkan audit log memakai rantai hash SHA-256 tanpa kunci.
 
 ---
 
 ## 🏗️ Alur Data & Arsitektur
 
-*Diagram berikut mengilustrasikan alur pemrosesan inbound (sanitasi/masking rahasia dari filesystem dan env ke LLM via in-memory vault) serta pemrosesan outbound (evaluasi policy egress guard sebelum token direstorasi ke secret asli untuk penulisan file atau eksekusi perintah shell).*
+*Diagram ini menunjukkan cara Samar menyamarkan secret yang terdeteksi saat membaca file dan environment, lalu memulihkan token saat menulis file atau menjalankan shell command. Sebelum merestorasi token untuk command, Samar memeriksa policy egress dan secara default meminta persetujuan.*
 
 ```mermaid
 flowchart TD
@@ -76,7 +76,7 @@ flowchart TD
 
 ## 🚀 Panduan Cepat & Instalasi
 
-Dapatkan proteksi privasi dalam kurang dari 2 menit:
+Pilih cara instalasi, lalu daftarkan Samar di client MCP Anda.
 
 ### 1. Pasang Samar
 Pilih salah satu metode berikut:
@@ -91,8 +91,8 @@ Pilih salah satu metode berikut:
   go run github.com/hanifalkauni/samar-mcp/cmd/samar@latest setup all
   ```
 
-### 2. Setup Otomatis 1 Perintah untuk Agent / IDE Anda
-Jalankan perintah setup bawaan Samar yang idempoten untuk mendaftarkan server MCP, memasang aturan deny, dan mengonfigurasi panduan agen secara otomatis:
+### 2. Daftarkan Samar ke client
+Perintah setup mendaftarkan Samar dan menambahkan aturan akses file serta panduan untuk client yang dipilih:
 
 ```bash
 samar setup claude-code   # Claude Code: settings.json deny rules, guard hook, CLAUDE.md
@@ -102,21 +102,21 @@ samar setup antigravity   # Antigravity/Gemini: mcp_config.json, rules/samar.md
 samar setup all           # Setup semua client yang terdeteksi sekaligus
 ```
 
-### 3. Verifikasi Cepat (Uji Proteksi)
-Pastikan asisten AI Anda tidak dapat lagi membaca secret mentah:
+### 3. Uji masking dengan file contoh
+Uji ini memeriksa pembacaan melalui Samar. Tool file bawaan client dapat melewati Samar jika aksesnya tidak dibatasi; lihat [Konfigurasi Manual Client](#-konfigurasi-manual-client-alternatif).
+
 1. Buat file `.env` tiruan di workspace Anda:
    ```bash
    echo "TEST_SECRET=my_dummy_secret_token_123" > .env
    ```
-2. Pada agen AI Anda (Claude Code, Cursor, Kiro, atau Antigravity), tanyakan:
-   > *"Baca file .env dan sebutkan nilai secret-nya"*
-3. **Verifikasi:** Agen akan menampilkan token tersamar seperti `__SAMAR_SECRET_1__`, bukan nilai rahasia `my_dummy_secret_token_123`!
+2. Minta client membaca `.env` melalui tool Samar `samar_read_file`.
+3. Hasilnya seharusnya memuat token seperti `__SAMAR_SECRET_1__`, bukan `my_dummy_secret_token_123`.
 
 ---
 
 ## 🔌 Konfigurasi Manual Client (Alternatif)
 
-Jika Anda ingin melakukan konfigurasi manual atau menggunakan client tanpa setup otomatis (misalnya Claude Desktop), gunakan template siap pakai di folder [`docs/clients/`](./docs/clients/) (`kiro.mcp.json`, `cursor.mcp.json`, `claude.mcp.json`, `allowlist.example`).
+Jika ingin mengatur client sendiri atau menggunakan client tanpa perintah setup, mulai dari template di [`docs/clients/`](./docs/clients/) (`kiro.mcp.json`, `cursor.mcp.json`, `claude.mcp.json`, dan `allowlist.example`).
 
 #### Opsi 1: Otomatis via `go run` (Tanpa Instalasi Manual)
 Menjalankan Samar secara on-the-fly langsung dari repositori GitHub:
@@ -155,26 +155,26 @@ Menjalankan Samar secara on-the-fly langsung dari repositori GitHub:
 }
 ```
 
-> **Syarat Mutlak Konfigurasi Manual:** Terapkan **deny-selektif pada tool bawaan client untuk file sensitif** (`.env`, `*.pem`, dsb.) — lihat panduan [`docs/CLIENT_CONFIG.id.md`](./docs/CLIENT_CONFIG.id.md). Tanpa langkah ini, tool bawaan client dapat membaca secret langsung tanpa masking (PRD §5.5). Panduan khusus Kiro: [`docs/KIRO_SETUP.id.md`](./docs/KIRO_SETUP.id.md).
+> **Wajib untuk konfigurasi manual:** Atur tool file bawaan client agar menolak akses ke file sensitif seperti `.env` dan `*.pem`. Jika tidak, tool tersebut dapat membaca file langsung tanpa melewati Samar. Lihat [`docs/CLIENT_CONFIG.id.md`](./docs/CLIENT_CONFIG.id.md). Untuk Kiro, ikuti [`docs/KIRO_SETUP.id.md`](./docs/KIRO_SETUP.id.md).
 
 ---
 
 ## ✨ Fitur
 
 ### Inbound (M0)
-- `samar_read_file(path)` — baca file, masking secret, kembalikan teks tersanitasi.
-- `samar_get_env(env_var?)` — baca environment dengan value termasking (nama variabel tetap terlihat).
+- `samar_read_file(path)` — membaca file, menyamarkan secret yang terdeteksi, lalu mengembalikan isinya.
+- `samar_get_env(env_var?)` — membaca environment dan menyamarkan nilainya; nama variabel tetap terlihat.
 
 ### Outbound (M1)
-- `samar_write_file(path, content)` — restorasi token → secret asli sebelum ditulis; **abort** bila token korup/terpotong (fail-closed).
-- `samar_execute_command(command, cwd?)` — evaluasi policy exfiltration **sebelum** unmask; unmask lalu jalankan; output di-mask ulang.
-- **Policy exfiltration (§5.6):** token yang mengalir ke host eksternal non-allowlist → eksekusi diblokir (fail-closed).
+- `samar_write_file(path, content)` — memulihkan token sebelum menulis. Jika token rusak atau terpotong, Samar membatalkan operasi dan mengembalikan error.
+- `samar_execute_command(command, cwd?)` — secara default meminta persetujuan MCP elicitation sebelum memulihkan token dan menjalankan command. Proses shell memiliki timeout 30 detik; stdout dan stderr masing-masing dibatasi 1 MiB. Batas ini tidak mengisolasi proses atau akses jaringannya.
+- **Pemeriksaan egress:** Samar memblokir URL non-allowlist yang terdeteksi dan utilitas jaringan tertentu yang tujuannya tidak dapat dikenali. Pemeriksaan teks command bersifat heuristik; pemeriksaan ini tidak dapat membuktikan bahwa command hanya bekerja lokal. Jika client tidak mendukung elicitation, persetujuan gagal tertutup. `SAMAR_REQUIRE_CONFIRM=off` secara eksplisit melewati persetujuan.
 - **Egress allowlist bertingkat (§13.3):** `global ∪ per-project`, lazy reload tanpa restart (§13.5).
 
 ### Inti
 - Vault token↔secret dua-arah, in-memory, token **acak** (bukan hash nilai) + reverse-map determinisme.
 - Detektor: parser `.env*` (mask semua value) + rule-set regex (AWS, GitHub, OpenAI, Slack, Stripe, Google, JWT, DB URI, private key, variabel generik).
-- **Pola kustom (didefinisikan pengguna, hot-reload):** tambahkan format secret Anda sendiri lewat file konfigurasi teks biasa — tanpa kompilasi ulang. Satu regex per baris; baris `#` dan baris kosong diabaikan. Bila pola punya grup tangkap bernama `secret`, hanya grup itu yang dimasking (jika tidak, seluruh match). Pola rusak dilewati tanpa mematikan sisanya, dan file yang gagal dibaca mempertahankan pola yang sudah dimuat (fail-safe). Perubahan dimuat otomatis (cek mtime lazy tiap 5 detik), mekanisme sama seperti allowlist egress.
+- **Pola kustom (hot-reload):** Tambahkan format secret di file teks; Samar tidak perlu dikompilasi ulang. Tulis satu regex per baris. Baris kosong dan baris yang diawali `#` diabaikan. Jika pola memiliki grup tangkap bernama `secret`, Samar hanya menyamarkan grup itu; jika tidak, seluruh match disamarkan. Pola yang rusak dilewati. Jika file tidak bisa dibaca, Samar mempertahankan pola yang sudah dimuat. Samar memeriksa perubahan setiap lima detik.
   - Global: `~/.samar/patterns` (fallback: `~/.safeenv/patterns`)
   - Per-project: `./.samar/patterns` (fallback: `./.safeenv/patterns`)
   - Contoh file `patterns`:
@@ -184,9 +184,9 @@ Menjalankan Samar secara on-the-fly langsung dari repositori GitHub:
     # Mask hanya value setelah "internal_key:"
     internal_key:\s*(?P<secret>[A-Z0-9]{8,})
     ```
-- **Deteksi entropi (opt-in, `SAMAR_ENTROPY=1`):** jaring tambahan untuk token *telanjang* berentropi tinggi yang tak punya kata-kunci (lolos Regex) dan di luar `.env` (lolos DotEnv). Memakai entropi Shannon per-kata dengan penjaga konservatif (batas panjang, melewati UUID, angka murni, kata bahasa alami). **Nonaktif secara default** karena bisa menambah false-positive pada hash/UUID/base64; aktifkan bila Anda mengutamakan recall.
-- **Deteksi PII (opt-in, `SAMAR_PII=1`):** menangkap data pribadi yang bukan secret teknis — alamat email, nomor kartu kredit (divalidasi Luhn), IBAN (divalidasi mod-97), dan alamat IPv4 (rentang oktet dicek). **Nonaktif secara default** karena pola PII lebih rentan false-positive; validasi struktural (Luhn/mod-97/rentang oktet) menyaring sebagian besar noise.
-- **Safety-net anti-bocor runtime (selalu aktif):** verifikasi terakhir sebelum hasil tool dikirim ke LLM. Ia memindai output atas secret yang sudah diketahui vault; bila ada yang lolos lewat jalur lain, secret itu **di-tokenisasi ulang** dengan token vault yang sama (menambal, bukan sekadar gagal). Kebocoran yang ditambal dicatat di audit sebagai `leak_patched`.
+- **Deteksi entropi (opt-in, `SAMAR_ENTROPY=1`):** Mendeteksi token berentropi tinggi tanpa kata kunci secret di luar file `.env`. Detektor memakai entropi Shannon per kata dan melewati nilai pendek, UUID, angka, serta kata umum. Fitur ini nonaktif secara default karena dapat menandai hash dan string base64.
+- **Deteksi PII (opt-in, `SAMAR_PII=1`):** Mendeteksi alamat email, nomor kartu kredit, IBAN, dan IPv4. Samar memvalidasi kartu dengan Luhn, IBAN dengan mod-97, dan rentang oktet IPv4. Fitur ini nonaktif secara default karena pola PII dapat menghasilkan false-positive.
+- **Safety-net runtime (selalu aktif):** Sebelum mengembalikan hasil tool, Samar memeriksa apakah output berisi secret yang sudah tersimpan di vault. Jika ditemukan, Samar menggantinya dengan token yang sama dan mencatat event `leak_patched` di audit log.
 
 ---
 
@@ -196,7 +196,7 @@ Menjalankan Samar secara on-the-fly langsung dari repositori GitHub:
 | :--- | :--- | :--- | :--- |
 | `SAMAR_AUDIT_DIR` | Path direktori | `~/.samar/audit/<project-slug>-<hash8>/` | Direktori log audit kustom (override). File dan direktori dibuat secara *lazy* saat event pertama ditulis (sesi idle tidak membuat file kosong). (Dukungan mundur: `SAFEENV_AUDIT_DIR`). |
 | `SAMAR_STRICT_ALLOWLIST` | `1` / `0` | `0` (union) | Jika `1`, egress allowlist per-project mempersempit global (`global ∩ project`). Default: penggabungan (`global ∪ project`). (Dukungan mundur: `SAFEENV_STRICT_ALLOWLIST`). |
-| `SAMAR_REQUIRE_CONFIRM` | `""`, `"off"`, `"elicit"`, `"deny"` | `""` (off) | Kontrol konfirmasi manusia saat perintah jaringan mengirim secret:<br>• `""` / `"off"`: auto-approve jika host terdaftar di allowlist (peringatan dicetak ke stderr).<br>• `"elicit"`: minta persetujuan interaktif via MCP elicitation (fail-closed bila tidak didukung client).<br>• `"deny"`: selalu tolak aksi jaringan bertoken.<br>(Dukungan mundur: `SAFEENV_REQUIRE_CONFIRM`). |
+| `SAMAR_REQUIRE_CONFIRM` | `""`, `"off"`, `"elicit"`, `"deny"` | `"elicit"` | Persetujuan sebelum command shell yang membawa secret hasil restorasi: `""` / `"elicit"` meminta persetujuan MCP elicitation (gagal tertutup bila client tidak mendukung); `"off"` secara eksplisit auto-approve command bertoken dan berisiko untuk secret asli; `"deny"` menolak semua command bertoken. `SAFEENV_REQUIRE_CONFIRM` tetap didukung. |
 | `SAMAR_ENTROPY` | `1` / `0` | `0` (off) | Jika `1`, aktifkan deteksi entropi Shannon (opt-in) untuk token telanjang berentropi tinggi (tanpa kata-kunci, non-`.env`). Bisa menambah false-positive pada hash/UUID/base64. (Dukungan mundur: `SAFEENV_ENTROPY`). |
 | `SAMAR_PII` | `1` / `0` | `0` (off) | Jika `1`, aktifkan deteksi PII (opt-in): email, kartu kredit (Luhn), IBAN (mod-97), IPv4 (rentang oktet). Bisa menambah false-positive. (Dukungan mundur: `SAFEENV_PII`). |
 
@@ -231,7 +231,7 @@ samar-mcp/
 │   └── samar/               # Composition root & entry point binary MCP
 ├── internal/
 │   ├── allowlist/           # Multi-layer egress allowlist & lazy reload
-│   ├── audit/               # Audit logger JSONL dengan HMAC / hash-chaining
+│   ├── audit/               # Audit logger JSONL dengan rantai hash SHA-256 tanpa kunci
 │   ├── detector/            # Scanner kredensial (DotEnv parser & Regex rules)
 │   ├── idgen/               # Generator ID token acak (crypto/rand)
 │   ├── masking/             # Engine sanitasi inbound (detect -> tokenize -> replace)
@@ -260,18 +260,12 @@ go test -race ./...                      # unit test + race detector
 go vet ./...
 ```
 
-**Canary harness** — buktikan batas proteksi secara konkret (tanam penanda unik
-di berbagai jenis file, jalankan tool Samar via MCP, pastikan nol kebocoran
-tak terduga):
+Canary harness menanam penanda unik di beberapa jenis file, menjalankan tool Samar melalui MCP, lalu memeriksa kebocoran yang tidak terduga:
 ```bash
 go build -o bin/samar ./cmd/samar
 go run ./test/canary        # exit 0 = tak ada kebocoran tak terduga
 ```
-Harness melaporkan per-fixture `PROTECTED` / `EXPECTED-LEAK` (batas desain) /
-`UNEXPECTED-LEAK`. **Catatan:** ini membuktikan masking pada jalur yang MELEWATI
-Samar (Lapis 1) — bukan bahwa client tak bisa membaca file lewat tool
-bawaannya (Lapis 2 / bypass). Untuk menguji bypass di client nyata, ikuti
-[`docs/BYPASS_TEST.id.md`](./docs/BYPASS_TEST.id.md) (prosedur canary manual per client).
+Untuk setiap fixture, harness melaporkan `PROTECTED`, `EXPECTED-LEAK` (batas yang diketahui), atau `UNEXPECTED-LEAK`. Harness hanya memeriksa permintaan yang melewati Samar. Harness tidak memeriksa apakah client dapat membaca file dengan tool bawaannya; ikuti [`docs/BYPASS_TEST.id.md`](./docs/BYPASS_TEST.id.md) untuk pengujian itu.
 
 ---
 
@@ -279,7 +273,7 @@ bawaannya (Lapis 2 / bypass). Untuk menguji bypass di client nyata, ikuti
 
 - **Zero-Persistence:** Vault strictly in-memory; hangus seketika saat proses berhenti. Tidak ada tool untuk unmask dari sisi LLM.
 - **Anti-Brute Force:** Token acak tidak diturunkan dari nilai asli (bukan hash).
-- **DoS Guard:** File berukuran > 10 MB ditolak dengan error terkontrol.
+- **Perlindungan DoS:** File lebih dari 10 MB ditolak. Proses shell memiliki timeout 30 detik; stdout dan stderr dibatasi masing-masing 1 MiB. Proses turunan tidak dijamin ikut dihentikan.
 
 ---
 
@@ -288,31 +282,31 @@ bawaannya (Lapis 2 / bypass). Untuk menguji bypass di client nyata, ikuti
 <details>
 <summary><b>Bagaimana jika token placeholder termutasi atau terpotong oleh LLM?</b></summary>
 
-Samar menerapkan prinsip **fail-closed**. Jika model AI memotong token (misal `__SAMAR_SEC...` bukan token utuh yang valid), `samar_write_file` dan `samar_execute_command` akan langsung membatalkan operasi (*abort*) dan mengembalikan error demi mencegah penulisan data korup atau secret yang rusak.
+Jika token diubah atau terpotong, Samar tidak dapat memulihkannya. `samar_write_file` dan `samar_execute_command` mengembalikan error alih-alih melanjutkan dengan nilai yang rusak atau tidak lengkap.
 </details>
 
 <details>
 <summary><b>Mengapa AI masih bisa membaca nilai asli di file .env saya?</b></summary>
 
-Pastikan Anda telah menerapkan **deny-selektif** pada tool bawaan client AI (seperti `fs_read` atau `Read`). Jika client memanggil tool baca bawaannya, konten dibaca langsung tanpa melewati Samar. Lihat panduan lengkap di [`docs/CLIENT_CONFIG.id.md`](./docs/CLIENT_CONFIG.id.md).
+Samar hanya menyamarkan pembacaan yang melewati tool-nya. Atur **deny-selektif** untuk tool file bawaan client (seperti `fs_read` atau `Read`) agar tool tersebut tidak dapat membaca file sensitif langsung. Lihat [`docs/CLIENT_CONFIG.id.md`](./docs/CLIENT_CONFIG.id.md).
 </details>
 
 <details>
 <summary><b>Apakah perlu me-restart server Samar saat memperbarui file allowlist?</b></summary>
 
-Tidak. Samar mengimplementasikan *lazy reload* otomatis (interval 5 detik berdasarkan `mtime` file) pada file allowlist global (`~/.samar/allowlist`) maupun per-project (`./.samar/allowlist`).
+Tidak. Samar memeriksa allowlist global (`~/.samar/allowlist`) dan project (`./.samar/allowlist`) setiap lima detik, lalu memuat ulang file yang berubah.
 </details>
 
 <details>
 <summary><b>Apakah secret asli ikut dicatat ke dalam log audit?</b></summary>
 
-Tidak. Log audit disimpan di `~/.samar/audit/<project-slug>-<hash8>/<timestamp>.jsonl` (atau direktori kustom via `SAMAR_AUDIT_DIR`) dengan HMAC/hash-chain anti-tamper. File dan folder dibuat secara *lazy* hanya saat ada event audit, sehingga tidak mengotori repositori proyek. Log ini hanya mencatat metadata event (tipe event, nama tool, keputusan policy, alasan, dan aktor), tidak pernah mencatat secret mentah.
+Tidak. Audit log berisi metadata event, bukan secret mentah. Secara default, file disimpan di `~/.samar/audit/<project-slug>-<hash8>/`; gunakan `SAMAR_AUDIT_DIR` untuk memilih direktori lain. Setiap log memakai rantai hash SHA-256 tanpa kunci. Rantai ini dapat membantu menemukan perubahan sebagian atau tidak sengaja, tetapi siapa pun yang dapat menulis ulang file juga dapat menghitung ulang rantainya. Samar melaporkan kegagalan tulis ke stderr, dan kegagalan itu dapat membuat log tidak lengkap.
 </details>
 
 ## 🤝 Kontribusi & Keamanan
 
-- **Kontribusi**: Panduan pengembangan lokal, alur pengujian, dan pedoman pull request tersedia di [CONTRIBUTING.md](./CONTRIBUTING.md).
-- **Kebijakan Keamanan**: Prosedur pelaporan kerentanan dan cakupan threat model dapat dilihat di [SECURITY.md](./SECURITY.md).
+- **Kontribusi:** Lihat [CONTRIBUTING.md](./CONTRIBUTING.md) untuk panduan pengembangan dan pull request.
+- **Keamanan:** Lihat [SECURITY.md](./SECURITY.md) untuk melaporkan kerentanan dan memahami cakupan keamanan proyek.
 
 ---
 

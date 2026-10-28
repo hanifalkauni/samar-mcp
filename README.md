@@ -10,15 +10,15 @@
 
 ---
 
-Privacy & security middleware for the Model Context Protocol (MCP). Samar intercepts and masks sensitive credentials (API keys, passwords, private keys, database URLs, and `.env` variables) before they reach the LLM context (inbound), replacing them with deterministic reversible tokens backed by an in-memory ephemeral vault (zero-persistence). Outbound operations (file writes and command executions) safely restore tokens to real values while enforcing strict egress allowlists and fail-closed policies.
+Samar is an MCP server that masks detected credentials when a client reads files or environment variables through Samar. It replaces them with reversible tokens held in memory. When a token is used in a file write or shell command, Samar restores the original value. By default, shell commands containing tokens require approval through MCP elicitation. Egress checks inspect command text, so they cannot guarantee that a command will not use the network.
 
-> **Version: v1.2.1** — Production-ready privacy middleware featuring inbound credential masking, fail-closed outbound restoration, network egress policy enforcement, human-in-the-loop confirmation (`off`, `elicit`, `deny`), and cryptographic HMAC audit logging.
+> **Version: v1.3.0.** Token-bearing shell commands require approval by default. Egress checks are heuristic, and the audit log uses an unkeyed SHA-256 hash chain.
 
 ---
 
 ## 🏗️ Data Flow & Architecture
 
-*The following diagram illustrates the inbound path (sanitizing/masking secrets from local filesystem and environment variables before reaching LLM context via an in-memory vault) and outbound path (evaluating egress policy guard before unmasking tokens back to raw secrets for file writes or command execution).*
+*The diagram shows how Samar masks detected secrets on reads and restores tokens on writes and shell commands. Before restoring tokens for a shell command, Samar checks its egress policy and asks for approval by default.*
 
 ```mermaid
 flowchart TD
@@ -76,7 +76,7 @@ flowchart TD
 
 ## 🚀 Quickstart & Installation
 
-Get protected in under 2 minutes:
+Choose an installation method, then register Samar with your MCP client.
 
 ### 1. Install Samar
 Choose one method:
@@ -91,8 +91,8 @@ Choose one method:
   go run github.com/hanifalkauni/samar-mcp/cmd/samar@latest setup all
   ```
 
-### 2. Automated 1-Step Setup for your AI Agent / IDE
-Run Samar's built-in idempotent setup command to automatically register the MCP server, install file deny rules, and configure agent steering:
+### 2. Register Samar with your client
+The setup command registers Samar and adds the supported client's file-access rules and guidance files:
 
 ```bash
 samar setup claude-code   # Claude Code: settings.json deny rules, guard hook, CLAUDE.md
@@ -102,21 +102,21 @@ samar setup antigravity   # Antigravity/Gemini: mcp_config.json, rules/samar.md
 samar setup all           # Setup all supported AI clients in one command
 ```
 
-### 3. Verify Protection (Quick Test)
-Ensure your AI client cannot read raw secrets:
+### 3. Check masking with a test file
+This test checks reads through Samar. A client's built-in file tools can bypass Samar unless you restrict them; see [Manual Client Configuration](#-manual-client-configuration-alternative).
+
 1. Create a dummy test `.env` file in your workspace:
    ```bash
    echo "TEST_SECRET=my_dummy_secret_token_123" > .env
    ```
-2. In your AI agent (Claude Code, Cursor, Kiro, Antigravity), ask:
-   > *"Read .env and tell me the secret"*
-3. **Verify:** The agent outputs a masked token like `__SAMAR_SECRET_1__` instead of `my_dummy_secret_token_123`!
+2. Ask your client to read `.env` through Samar's `samar_read_file` tool.
+3. The result should contain a masked token such as `__SAMAR_SECRET_1__`, not `my_dummy_secret_token_123`.
 
 ---
 
 ## 🔌 Manual Client Configuration (Alternative)
 
-If you prefer to configure your client manually or use clients without automated setup (e.g., Claude Desktop), use the ready-to-use templates in [`docs/clients/`](./docs/clients/) (`kiro.mcp.json`, `cursor.mcp.json`, `claude.mcp.json`, `allowlist.example`).
+If you want to configure a client yourself, or use one without a setup command, start with the templates in [`docs/clients/`](./docs/clients/) (`kiro.mcp.json`, `cursor.mcp.json`, `claude.mcp.json`, and `allowlist.example`).
 
 #### Option 1: On-the-fly via `go run` (Zero Installation)
 Runs Samar on-the-fly directly from the GitHub repository:
@@ -155,7 +155,7 @@ Runs Samar on-the-fly directly from the GitHub repository:
 }
 ```
 
-> **Crucial Requirement for Manual Setup:** Enforce **selective-deny on built-in tools for sensitive files** (`.env`, `*.pem`, etc.) — see [`docs/CLIENT_CONFIG.md`](./docs/CLIENT_CONFIG.md). Without this step, client built-in tools can bypass Samar and read secrets directly (PRD §5.5). Dedicated step-by-step guide for Kiro: [`docs/KIRO_SETUP.md`](./docs/KIRO_SETUP.md).
+> **Required for manual setup:** Configure the client's built-in file tools to deny access to sensitive files such as `.env` and `*.pem`. Otherwise, those tools can read the files directly and bypass Samar. See [`docs/CLIENT_CONFIG.md`](./docs/CLIENT_CONFIG.md). For Kiro, follow [`docs/KIRO_SETUP.md`](./docs/KIRO_SETUP.md).
 
 ---
 
@@ -166,15 +166,15 @@ Runs Samar on-the-fly directly from the GitHub repository:
 - `samar_get_env(env_var?)` — reads environment variables with masked values (variable keys remain visible).
 
 ### Outbound (M1)
-- `samar_write_file(path, content)` — restores tokens back to original secrets before writing; **aborts** if tokens are corrupted or truncated (fail-closed).
-- `samar_execute_command(command, cwd?)` — evaluates exfiltration policy **prior** to unmasking; unmasks and executes command; re-masks command output.
-- **Exfiltration policy (§5.6):** tokens destined for external hosts not on the allowlist are blocked (fail-closed).
+- `samar_write_file(path, content)` — restores tokens before writing. If a token is corrupted or truncated, Samar stops and returns an error.
+- `samar_execute_command(command, cwd?)` — by default, asks for MCP elicitation approval before restoring tokens and running the command. Samar applies a 30-second timeout to the shell process and caps stdout and stderr at 1 MiB each. These limits do not isolate the process or its network access.
+- **Egress checks:** Samar blocks detected URLs outside the allowlist and known network tools whose destination it cannot identify. Command-text checks are heuristic and cannot prove a command is local-only. Approval fails closed when a client lacks elicitation support; `SAMAR_REQUIRE_CONFIRM=off` explicitly skips approval.
 - **Multi-layer egress allowlist (§13.3):** `global ∪ per-project`, hot lazy-reloading without restarts (§13.5).
 
 ### Core Engine
 - Two-way in-memory token↔secret vault, using **cryptographically random** tokens (not value hashes) with reverse-mapping for session determinism.
 - Detectors: `.env*` parser (masks all values) + regex rule-set (AWS, GitHub, OpenAI, Slack, Stripe, Google, JWT, database URIs, private keys, generic assignments).
-- **Custom patterns (user-defined, hot-reload):** add your own secret formats via a plain-text config file — no rebuild needed. One regex per line; `#` lines and blank lines are ignored. If a pattern defines a named `secret` capture group, only that group is masked (otherwise the whole match). Invalid patterns are skipped without disabling the rest, and an unreadable file keeps the previously loaded patterns (fail-safe). Changes are picked up automatically (lazy mtime check every 5s), same mechanism as the egress allowlist.
+- **Custom patterns (user-defined, hot-reload):** Add secret formats in a plain-text file; no rebuild is needed. Put one regex on each line. Blank lines and lines starting with `#` are ignored. If a pattern has a named `secret` capture group, Samar masks that group; otherwise it masks the full match. Invalid patterns are skipped. If Samar cannot read the file, it keeps the last loaded patterns. Samar checks for changes every five seconds.
   - Global: `~/.samar/patterns` (fallback: `~/.safeenv/patterns`)
   - Per-project: `./.samar/patterns` (fallback: `./.safeenv/patterns`)
   - Example `patterns` file:
@@ -184,9 +184,9 @@ Runs Samar on-the-fly directly from the GitHub repository:
     # Mask only the value after "internal_key:"
     internal_key:\s*(?P<secret>[A-Z0-9]{8,})
     ```
-- **Entropy detection (opt-in, `SAMAR_ENTROPY=1`):** an extra net for *bare* high-entropy tokens that carry no keyword (so Regex misses them) and live outside `.env` (so DotEnv misses them). Uses Shannon entropy over whitespace-delimited words, with conservative guards (length bounds, skips UUIDs, pure digits, natural-language words). **Off by default** because it can raise false positives on hashes/UUIDs/base64 blobs; enable it when you prioritize recall.
-- **PII detection (opt-in, `SAMAR_PII=1`):** catches personal data that isn't a technical secret — email addresses, credit-card numbers (validated with the Luhn algorithm), IBANs (validated with mod-97), and IPv4 addresses (octet-range checked). **Off by default** because PII patterns are more false-positive-prone; the structural validation (Luhn/mod-97/octet range) keeps most noise out.
-- **Runtime leak safety-net (always on):** a final verification before any tool result is returned to the LLM. It scans the output for any secret the vault already knows and, if one slipped through on a different path, **re-tokenizes it** using the same vault token (patching, not just failing). A patched leak is recorded in the audit log as `leak_patched`.
+- **Entropy detection (opt-in, `SAMAR_ENTROPY=1`):** Detects high-entropy tokens without secret-related keywords outside `.env` files. It uses Shannon entropy over whitespace-delimited words and skips short values, UUIDs, numbers, and common words. It is off by default because it can flag hashes and base64 strings.
+- **PII detection (opt-in, `SAMAR_PII=1`):** Detects email addresses, credit-card numbers, IBANs, and IPv4 addresses. Samar validates card numbers with Luhn, IBANs with mod-97, and IPv4 octets by range. It is off by default because these patterns can produce false positives.
+- **Runtime leak safety-net (always on):** Before returning a tool result, Samar checks it for secrets already in the vault. If it finds one, it replaces it with the same token and records a `leak_patched` audit event.
 
 ---
 
@@ -196,7 +196,7 @@ Runs Samar on-the-fly directly from the GitHub repository:
 | :--- | :--- | :--- | :--- |
 | `SAMAR_AUDIT_DIR` | Directory path | `~/.samar/audit/<project-slug>-<hash8>/` | Custom audit log directory. Files and directories are created lazily upon the first logged event (idle sessions produce 0 files). (Backward-compatible fallback: `SAFEENV_AUDIT_DIR`). |
 | `SAMAR_STRICT_ALLOWLIST` | `1` / `0` | `0` (union) | When set to `1`, per-project allowlist narrows the global allowlist (`global ∩ project`). Default: union merge (`global ∪ project`). (Backward-compatible fallback: `SAFEENV_STRICT_ALLOWLIST`). |
-| `SAMAR_REQUIRE_CONFIRM` | `""`, `"off"`, `"elicit"`, `"deny"` | `""` (off) | Human-in-the-loop confirmation before outbound network calls containing unmasked secrets:<br>• `""` / `"off"`: auto-approve if destination host is in allowlist (warning logged to stderr).<br>• `"elicit"`: request interactive approval via MCP elicitation (fail-closed if client lacks support).<br>• `"deny"`: reject all network commands containing tokens.<br>(Backward-compatible fallback: `SAFEENV_REQUIRE_CONFIRM`). |
+| `SAMAR_REQUIRE_CONFIRM` | `""`, `"off"`, `"elicit"`, `"deny"` | `"elicit"` | Approval before any shell command containing restored secrets:<br>• `""` / `"elicit"`: request approval via MCP elicitation (fail-closed if the client lacks support).<br>• `"off"`: explicitly auto-approve token-bearing commands; unsafe with real secrets.<br>• `"deny"`: reject all token-bearing commands.<br>(Backward-compatible fallback: `SAFEENV_REQUIRE_CONFIRM`). |
 | `SAMAR_ENTROPY` | `1` / `0` | `0` (off) | When `1`, enables opt-in Shannon-entropy detection of bare high-entropy tokens (no keyword, non-`.env`). May increase false positives on hashes/UUIDs/base64. (Backward-compatible fallback: `SAFEENV_ENTROPY`). |
 | `SAMAR_PII` | `1` / `0` | `0` (off) | When `1`, enables opt-in PII detection: email, credit card (Luhn), IBAN (mod-97), IPv4 (octet range). May increase false positives. (Backward-compatible fallback: `SAFEENV_PII`). |
 
@@ -230,7 +230,7 @@ samar-mcp/
 │   └── samar/               # Composition root & MCP binary entry point
 ├── internal/
 │   ├── allowlist/           # Multi-layer egress allowlist & lazy reload
-│   ├── audit/               # JSONL audit logger with HMAC / hash-chaining
+│   ├── audit/               # JSONL audit logger with an unkeyed SHA-256 hash chain
 │   ├── detector/            # Secret scanner (DotEnv parser & Regex rulesets)
 │   ├── idgen/               # Random token ID generator (crypto/rand)
 │   ├── masking/             # Inbound sanitization engine (detect -> tokenize -> replace)
@@ -259,12 +259,12 @@ go test -race ./...                      # unit tests with race detector
 go vet ./...
 ```
 
-**Canary harness** — concretely verifies protection boundaries (plants unique markers across diverse file types, exercises Samar tools via MCP, and verifies zero unexpected leaks):
+The canary harness plants unique markers in several file types, exercises Samar through MCP, and checks for unexpected leaks:
 ```bash
 go build -o bin/samar ./cmd/samar
 go run ./test/canary        # exit 0 = no unexpected leaks
 ```
-The harness reports `PROTECTED` / `EXPECTED-LEAK` (design limits) / `UNEXPECTED-LEAK` per fixture. **Note:** this validates masking on requests that PASS THROUGH Samar (Layer 1) — not that the client cannot read files using its built-in tools (Layer 2 / bypass). To test bypass prevention on actual clients, follow [`docs/BYPASS_TEST.md`](./docs/BYPASS_TEST.md).
+For each fixture, the harness reports `PROTECTED`, `EXPECTED-LEAK` (a known limit), or `UNEXPECTED-LEAK`. It only checks requests that pass through Samar. It does not check whether a client can read files with its own tools; see [`docs/BYPASS_TEST.md`](./docs/BYPASS_TEST.md) for that test.
 
 ---
 
@@ -272,7 +272,7 @@ The harness reports `PROTECTED` / `EXPECTED-LEAK` (design limits) / `UNEXPECTED-
 
 - **Zero-Persistence:** Vault is strictly in-memory; completely destroyed upon process termination. No MCP tool exists to unmask values from the LLM side.
 - **Anti-Brute Force:** Random tokens do not leak original secret contents or hashes.
-- **DoS Guard:** Files exceeding 10 MB are rejected with controlled error handling.
+- **DoS Guards:** Files exceeding 10 MB are rejected. Shell processes have a 30-second timeout, with stdout and stderr capped at 1 MiB each. This does not guarantee cleanup of child processes.
 
 ---
 
@@ -281,31 +281,31 @@ The harness reports `PROTECTED` / `EXPECTED-LEAK` (design limits) / `UNEXPECTED-
 <details>
 <summary><b>What happens if an LLM truncates or corrupts a secret token?</b></summary>
 
-Samar enforces a strict **fail-closed** policy. If an AI model mutates or truncates a placeholder token (e.g. `__SAMAR_SEC...` instead of a known valid token), `samar_write_file` and `samar_execute_command` immediately abort the operation and return an error to prevent file corruption or broken secrets.
+If a token is changed or cut off, Samar cannot restore it. `samar_write_file` and `samar_execute_command` return an error instead of continuing with a partial or invalid value.
 </details>
 
 <details>
 <summary><b>Why can my AI assistant still read raw secrets from my .env file?</b></summary>
 
-Ensure you have configured **selective-deny** on your AI client's built-in file reading tools (such as `fs_read` or `Read`). If the AI invokes its native read tool, files are read directly without passing through Samar. Follow the setup instructions in [`docs/CLIENT_CONFIG.md`](./docs/CLIENT_CONFIG.md).
+Samar only masks reads made through its tools. Configure **selective-deny** for the client's built-in file tools (such as `fs_read` or `Read`) so they cannot read sensitive files directly. See [`docs/CLIENT_CONFIG.md`](./docs/CLIENT_CONFIG.md).
 </details>
 
 <details>
 <summary><b>Do I need to restart Samar when modifying the allowlist?</b></summary>
 
-No. Samar utilizes automatic *hot lazy reloading* (checked every 5 seconds via file `mtime`) for both global (`~/.samar/allowlist`) and project-level (`./.samar/allowlist`) allowlists.
+No. Samar checks the global (`~/.samar/allowlist`) and project (`./.samar/allowlist`) files every five seconds and reloads them when they change.
 </details>
 
 <details>
 <summary><b>Are raw secrets recorded in the audit logs?</b></summary>
 
-No. Session audit logs are stored in `~/.samar/audit/<project-slug>-<hash8>/<timestamp>.jsonl` (or custom directory via `SAMAR_AUDIT_DIR`) with cryptographic hash-chaining (HMAC/hash-chain). Files and directories are created lazily only when audit events occur, preventing repository pollution. They only record event metadata (event type, tool name, policy decision, reason, actor, and token identifier) — raw secrets are never written.
+No. Audit logs contain event metadata, not raw secrets. Samar stores them under `~/.samar/audit/<project-slug>-<hash8>/` by default, or in the directory set by `SAMAR_AUDIT_DIR`. Each log uses an unkeyed SHA-256 hash chain. It can help reveal accidental or partial edits, but anyone who can rewrite the file can recompute the chain. Samar reports write failures to stderr, and a failure can leave the log incomplete.
 </details>
 
 ## 🤝 Contributing & Security
 
-- **Contributing**: Please review [CONTRIBUTING.md](./CONTRIBUTING.md) for local development guidelines, testing workflows, and pull request procedures.
-- **Security Policy**: For vulnerability disclosure and security scope, refer to [SECURITY.md](./SECURITY.md).
+- **Contributing:** See [CONTRIBUTING.md](./CONTRIBUTING.md) for development and pull request instructions.
+- **Security:** See [SECURITY.md](./SECURITY.md) for reporting vulnerabilities and the project's security scope.
 
 ---
 

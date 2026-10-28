@@ -4,14 +4,23 @@
 package safeio
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 // MaxFileBytes membatasi ukuran file yang dibaca (PRD §6.3): di atas ini
 // server menolak dengan error terkontrol alih-alih menggantung.
 const MaxFileBytes = 10 << 20 // 10 MB
+
+// CommandTimeout bounds one shell invocation. Callers may impose an earlier
+// deadline through the context.
+const CommandTimeout = 30 * time.Second
+
+// MaxCommandOutputBytes caps stdout and stderr independently.
+const MaxCommandOutputBytes = 1 << 20 // 1 MB per stream
 
 // FileReader membaca isi file sebagai teks.
 type FileReader interface {
@@ -33,14 +42,16 @@ type FileWriter interface {
 
 // CommandResult membawa keluaran eksekusi perintah.
 type CommandResult struct {
-	Stdout   string
-	Stderr   string
-	ExitCode int
+	Stdout          string
+	Stderr          string
+	ExitCode        int
+	StdoutTruncated bool
+	StderrTruncated bool
 }
 
 // CommandRunner mengeksekusi perintah shell di direktori kerja tertentu.
 type CommandRunner interface {
-	Run(command, cwd string) (CommandResult, error)
+	Run(ctx context.Context, command, cwd string) (CommandResult, error)
 }
 
 // OSFileReader membaca dari filesystem nyata dengan batas ukuran.

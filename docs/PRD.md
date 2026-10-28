@@ -59,7 +59,7 @@ masking (bypass).
 
 ### Non-Goals
 * **Bukan** pengganti secret manager (Vault, AWS Secrets Manager, dsb.) — SafeEnv hanya middleware runtime.
-* **Bukan** sandbox eksekusi penuh — tidak membatasi apa yang bisa dilakukan perintah lokal selain policy §5.6.
+* **Bukan** sandbox eksekusi penuh — shell berjalan dengan hak pengguna host. Policy egress memeriksa teks command secara heuristik; setiap command bertoken meminta persetujuan default, tetapi persetujuan tidak mengisolasi proses atau jaringan.
 * **Tidak** melindungi bila client gagal menegakkan deny-selektif/isolasi tool bawaan pada file sensitif (§5.5) — itu di luar kendali server.
 * **Tidak** menangani enkripsi at-rest (karena zero-persistence, tidak relevan).
 
@@ -182,7 +182,7 @@ Karena outbound unmasking adalah pisau bermata dua, `safe_execute_command` dan `
 * Nilai asli tidak pernah ditulis ke log/stdout/stderr.
 
 ### 6.2 Exfiltration Resistance
-* Policy §5.6 wajib aktif pada jalur outbound. Risiko residual (secret dipakai sah oleh perintah lokal yang kebetulan juga punya efek jaringan) didokumentasikan untuk pengguna.
+* Policy §5.6 wajib aktif pada jalur outbound: URL non-allowlist yang terdeteksi dan utilitas jaringan tertentu tanpa host terverifikasi ditolak; command bertoken lain memerlukan MCP elicitation sebelum secret direstorasi. Pemeriksaan teks bukan sandbox, dan persetujuan `off` secara eksplisit melewati langkah tersebut. Batas ini harus dijelaskan kepada pengguna.
 
 ### 6.3 Performance
 * Overhead latensi regex scanner < 50 ms untuk file < 1 MB.

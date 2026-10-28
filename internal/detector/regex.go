@@ -25,7 +25,7 @@ func NewRegex() *Regex {
 func (r *Regex) Name() string { return "regex" }
 
 // Detect menjalankan semua aturan dan mengembalikan rentang byte yang cocok.
-func (r *Regex) Detect(_ , content string) []Finding {
+func (r *Regex) Detect(_, content string) []Finding {
 	var findings []Finding
 	for _, ru := range r.rules {
 		idx := ru.re.SubexpIndex("secret")
@@ -51,6 +51,7 @@ func (r *Regex) Detect(_ , content string) []Finding {
 // UUID/hash/base64 non-secret). Diperluas dari gitleaks/detect-secrets.
 func defaultRules() []rule {
 	must := regexp.MustCompile
+	assignmentKey := `(?i)(?:[A-Z0-9_]*(?:SECRET|PASSWORD|PASSWD|PWD|PASSPHRASE|TOKEN|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|CLIENT[_-]?SECRET|CREDENTIAL|AUTH|BEARER|SIGNING[_-]?KEY|ENCRYPTION[_-]?KEY|MASTER[_-]?KEY|APP[_-]?KEY|WEBHOOK[_-]?SECRET|REFRESH[_-]?TOKEN|SESSION[_-]?KEY|COOKIE|SALT|DSN|CONNECTION[_-]?STRING)[A-Z0-9_]*|(?:[A-Z0-9_]*[_-])?PAT(?:[_-][A-Z0-9_]*)?)["']?\s*[:=]\s*`
 	return []rule{
 		// --- Provider API keys / tokens (prefix spesifik, pasti secret) ---
 		{"aws_access_key_id", must(`A(?:KIA|SIA|GPA|IDA|ROA|IPA|NPA|NVA)[0-9A-Z]{16}`)},
@@ -90,9 +91,10 @@ func defaultRules() []rule {
 		{"private_key_block", must(`(?s)-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP |ENCRYPTED )?PRIVATE KEY-----.*?-----END (?:RSA |EC |OPENSSH |DSA |PGP |ENCRYPTED )?PRIVATE KEY-----`)},
 
 		// --- Assignment generik: nama field mengandung kata-kunci secret ---
-		// Mendukung format .conf, YAML, maupun JSON dengan key ber-quote (mis. "CONF_TOKEN": "...").
-		// Hanya VALUE (grup "secret") yang dimasking.
-		{"generic_assignment", must(`(?i)(?:[A-Z0-9_]*(?:SECRET|PASSWORD|PASSWD|PWD|PASSPHRASE|TOKEN|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|CLIENT[_-]?SECRET|CREDENTIAL|AUTH|BEARER|SIGNING[_-]?KEY|ENCRYPTION[_-]?KEY|MASTER[_-]?KEY|APP[_-]?KEY|WEBHOOK[_-]?SECRET|REFRESH[_-]?TOKEN|SESSION[_-]?KEY|COOKIE|SALT|DSN|CONNECTION[_-]?STRING)[A-Z0-9_]*|(?:[A-Z0-9_]*[_-])?PAT(?:[_-][A-Z0-9_]*)?)["']?\s*[:=]\s*["']?(?P<secret>[^\s"'#,}\];]+)["']?`)},
+		// Cabang quoted menjaga whitespace dan # di dalam nilai JSON/YAML.
+		{"generic_assignment_double_quoted", must(assignmentKey + `"(?P<secret>(?:\\.|[^"\\])+)"`)},
+		{"generic_assignment_single_quoted", must(assignmentKey + `'(?P<secret>(?:''|[^'])+)'`)},
+		{"generic_assignment_unquoted", must(assignmentKey + `(?P<secret>[^\s"'#,}\];]+)`)},
 
 		// --- Header Authorization & Custom Auth Headers ---
 		{"authorization_header", must(`(?i)authorization["']?\s*[:=]\s*["']?(?:bearer|basic)\s+(?P<secret>[A-Za-z0-9\-._~+/]+=*)`)},

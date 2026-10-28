@@ -73,7 +73,6 @@ type lazyFileWriter struct {
 	dir      string
 	filename string
 	file     *os.File
-	warnOnce sync.Once
 }
 
 func newLazyFileWriter(dir, filename string) *lazyFileWriter {
@@ -89,18 +88,12 @@ func (l *lazyFileWriter) Write(p []byte) (n int, err error) {
 
 	if l.file == nil {
 		if err := os.MkdirAll(l.dir, 0o700); err != nil {
-			l.warnOnce.Do(func() {
-				fmt.Fprintf(os.Stderr, "samar: gagal membuat direktori audit %s: %v\n", l.dir, err)
-			})
 			return 0, err
 		}
 
 		filePath := filepath.Join(l.dir, l.filename)
 		f, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 		if err != nil {
-			l.warnOnce.Do(func() {
-				fmt.Fprintf(os.Stderr, "samar: gagal membuka file audit %s: %v\n", filePath, err)
-			})
 			return 0, err
 		}
 		l.file = f

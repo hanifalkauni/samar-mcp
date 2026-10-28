@@ -46,21 +46,20 @@ type Guard interface {
 	Evaluate(command string, containsToken bool) GuardResult
 }
 
-// Confirmer meminta persetujuan manusia untuk unmask-and-execute yang menyentuh
-// jaringan (§5.6/§13.2). Dipenuhi oleh adapter elicitation di composition root.
-// OPSIONAL: bila nil, server memakai autoApproveConfirmer (perilaku v1.0.0:
-// allowlist fail-closed tanpa prompt), sehingga menambahkan Confirmer tidak
-// memaksa klien yang belum mendukung elicitation.
+// Confirmer meminta persetujuan manusia sebelum command bertoken di-unmask dan
+// dieksekusi. Dipenuhi oleh adapter elicitation di composition root. OPSIONAL:
+// bila nil, server menolak command bertoken secara fail-closed.
 type Confirmer interface {
-	// Confirm mengembalikan true bila manusia menyetujui pengiriman secret ke hosts.
-	// ctx membawa sesi client (dibutuhkan adapter elicitation).
+	// Confirm returns true when a human approves execution with restored secrets.
+	// hosts is empty when policy could not identify a destination from the command.
 	Confirm(ctx context.Context, command string, hosts []string) bool
 }
 
-// autoApproveConfirmer adalah default: menyetujui (perilaku kompatibel v1.0.0).
-type autoApproveConfirmer struct{}
+// denyByDefaultConfirmer prevents token-bearing commands from running when an
+// embedding application has not supplied an explicit approval mechanism.
+type denyByDefaultConfirmer struct{}
 
-func (autoApproveConfirmer) Confirm(_ context.Context, _ string, _ []string) bool { return true }
+func (denyByDefaultConfirmer) Confirm(_ context.Context, _ string, _ []string) bool { return false }
 
 // Auditor mencatat kejadian keamanan (PRD §10). OPSIONAL: bila nil, server
 // memakai no-op sehingga audit tidak pernah menggagalkan operasi inti.
@@ -89,7 +88,7 @@ func (nopAuditor) Event(_, _, _, _ string) {}
 
 // Deps mengumpulkan dependency Samar. Dependency inbound (Masker/Files/Env)
 // wajib; dependency outbound (Writer/Runner/Restorer/Guard) wajib untuk M1.
-// Audit & Confirm opsional (default no-op / auto-approve).
+// Audit opsional (default no-op); Confirm opsional dan menolak secara default.
 type Deps struct {
 	Masker    Masker
 	Files     safeio.FileReader
@@ -123,7 +122,7 @@ func New(d Deps) (*Samar, error) {
 		d.Audit = nopAuditor{}
 	}
 	if d.Confirm == nil {
-		d.Confirm = autoApproveConfirmer{}
+		d.Confirm = denyByDefaultConfirmer{}
 	}
 	if d.SafetyNet == nil {
 		d.SafetyNet = nopSafetyNet{}
@@ -283,12 +282,12 @@ func (s *Samar) handleExecuteCommand(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError("exfiltration policy: eksekusi dibatalkan"), nil
 	}
 
-	// Human-in-the-loop (§5.6/§13.2): bila secret akan keluar ke jaringan,
-	// minta konfirmasi SEBELUM unmask. Default Confirmer auto-approve.
+	// Human-in-the-loop: setiap command bertoken perlu konfirmasi SEBELUM
+	// unmask karena command shell tidak bisa diklasifikasikan dengan aman dari teks.
 	if gr.NeedsConfirmation {
 		if !s.deps.Confirm.Confirm(ctx, command, gr.Hosts) {
 			s.deps.Audit.Event("policy_block", "samar_execute_command", "deny", "human_denied")
-			return mcp.NewToolResultError("eksekusi dibatalkan: konfirmasi manusia ditolak untuk pengiriman secret ke jaringan"), nil
+			return mcp.NewToolResultError("eksekusi dibatalkan: command bertoken tidak disetujui manusia"), nil
 		}
 		s.deps.Audit.Event("consent", "samar_execute_command", "allow", "human_approved")
 	}
@@ -299,7 +298,7 @@ func (s *Samar) handleExecuteCommand(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultErrorf("%v", err), nil
 	}
 
-	res, rerr := s.deps.Runner.Run(restored, cwd)
+	res, rerr := s.deps.Runner.Run(ctx, restored, cwd)
 	if rerr != nil {
 		return mcp.NewToolResultErrorf("gagal menjalankan perintah: %v", rerr), nil
 	}
@@ -307,6 +306,12 @@ func (s *Samar) handleExecuteCommand(ctx context.Context, req mcp.CallToolReques
 	// Keluaran perintah DI-MASK ULANG: output bisa berisi secret (mis. echo).
 	out := s.deps.Masker.Mask("", res.Stdout).Masked
 	errOut := s.deps.Masker.Mask("", res.Stderr).Masked
+	if res.StdoutTruncated {
+		out += fmt.Sprintf("\n[stdout truncated at %d bytes]", safeio.MaxCommandOutputBytes)
+	}
+	if res.StderrTruncated {
+		errOut += fmt.Sprintf("\n[stderr truncated at %d bytes]", safeio.MaxCommandOutputBytes)
+	}
 	combined := fmt.Sprintf("exit=%d\n--- stdout ---\n%s\n--- stderr ---\n%s", res.ExitCode, out, errOut)
 	return s.safeText("samar_execute_command", combined), nil
 }

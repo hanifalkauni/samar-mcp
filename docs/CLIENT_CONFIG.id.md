@@ -155,9 +155,7 @@ Perintah ini otomatis mendaftarkan Samar di `~/.gemini/config/mcp_config.json` d
 
 ## Egress allowlist (jalur outbound)
 
-`samar_execute_command` memblokir pengiriman secret ke host eksternal yang tidak
-ada di allowlist (PRD §5.6). Daftar host (satu per baris, `#` komentar) dibaca
-dari dua lokasi dan di-reload otomatis tanpa restart:
+Sebelum memulihkan secret, Samar memblokir URL non-allowlist yang terdeteksi dan utilitas jaringan yang tujuannya tidak dapat dikenali. Pemeriksaan ini hanya membaca teks command; shell masih dapat memakai jalur jaringan yang tidak terlihat. Karena itu, Samar meminta persetujuan melalui MCP elicitation sebelum memulihkan token. Jika client tidak mendukung elicitation, command ditolak. `SAMAR_REQUIRE_CONFIRM=off` melewati persetujuan dan dapat membuka secret asli. Samar memuat ulang daftar host di bawah ini secara otomatis.
 
 - **Global:** `~/.samar/allowlist` (fallback: `~/.safeenv/allowlist`)
 - **Per-project:** `.samar/allowlist` (fallback: `.safeenv/allowlist`) di root project

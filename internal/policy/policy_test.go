@@ -31,14 +31,20 @@ func TestEvaluate_AllowlistedHostAllowed(t *testing.T) {
 	if !d.Allow {
 		t.Fatalf("host allowlisted harus allow: %s", d.Reason)
 	}
+	if !d.NeedsConfirmation {
+		t.Fatal("command bertoken tetap harus minta persetujuan walau host allowlisted")
+	}
 }
 
-func TestEvaluate_LocalCommandWithTokenAllowed(t *testing.T) {
+func TestEvaluate_LocalCommandWithTokenRequiresConfirmation(t *testing.T) {
 	p := New(allowSet{})
-	// Perintah lokal murni (tanpa URL, tanpa network tool) boleh unmask.
+	// Command lokal pun dapat menjalankan skrip atau interpreter dengan akses jaringan.
 	d := p.EvaluateCommand("psql -c 'select 1' --password=__SAMAR_SECRET_1__", true)
 	if !d.Allow {
 		t.Fatalf("perintah lokal harus allow: %s", d.Reason)
+	}
+	if !d.NeedsConfirmation {
+		t.Fatal("command bertoken harus minta persetujuan meski tidak ada host terdeteksi")
 	}
 }
 

@@ -22,7 +22,7 @@ type Decision struct {
 	Allow             bool
 	Reason            string   // alasan deny, untuk audit (PRD §10) dan pesan error
 	Host              string   // host sink pertama yang menyebabkan deny (bila ada)
-	NeedsConfirmation bool     // true: diizinkan oleh allowlist TAPI mengirim secret ke jaringan -> minta konfirmasi manusia (§5.6/§13.2)
+	NeedsConfirmation bool     // true: command membawa secret dan harus disetujui manusia sebelum dieksekusi
 	Hosts             []string // host tujuan yang terdeteksi (untuk pesan konfirmasi/audit)
 }
 
@@ -68,9 +68,9 @@ type tokenAware interface {
 // Aturan (fail-closed):
 //  1. Tidak ada token         -> ALLOW (tak ada secret untuk dibocorkan).
 //  2. Ada token + ada URL ke host di luar allowlist                 -> DENY.
-//  3. Ada token + memakai network tool (curl/wget/nc/ssh/...)       -> DENY,
-//     kecuali seluruh host tujuan yang terdeteksi ada di allowlist.
-//  4. Selain itu (token dipakai perintah lokal murni)               -> ALLOW.
+//  3. Ada token + memakai network tool tanpa host URL yang bisa diverifikasi -> DENY.
+//  4. Semua command lain yang membawa token perlu konfirmasi manusia sebelum
+//     dijalankan. Command string tidak cukup untuk membuktikan proses lokal.
 func (p *Policy) EvaluateCommand(command string, containsToken bool) Decision {
 	if !containsToken {
 		return Decision{Allow: true, Reason: "no_token"}
@@ -92,18 +92,15 @@ func (p *Policy) EvaluateCommand(command string, containsToken bool) Decision {
 		return Decision{Allow: false, Reason: "network_tool_with_unresolved_host"}
 	}
 
-	// Token mengalir ke host jaringan yang SUDAH di allowlist: diizinkan, tetapi
-	// karena secret akan keluar ke jaringan, minta konfirmasi manusia default-on
-	// (§5.6/§13.2). Perintah lokal murni (tanpa host/net-tool) tidak perlu konfirmasi.
-	if len(hosts) > 0 || usesNetTool {
-		return Decision{Allow: true, Reason: "ok_needs_confirmation", NeedsConfirmation: true, Hosts: hosts}
-	}
-
-	return Decision{Allow: true, Reason: "ok"}
+	// String perintah shell tidak bisa membuktikan command lokal: skrip dan
+	// interpreter dapat membuka koneksi tanpa URL literal atau nama tool umum.
+	// Karena itu setiap command yang membawa token harus disetujui sebelum
+	// restorasi, bukan hanya command yang dikenali sebagai jaringan.
+	return Decision{Allow: true, Reason: "secret_command_requires_confirmation", NeedsConfirmation: true, Hosts: hosts}
 }
 
-// extractHosts menarik host dari URL eksplisit maupun argumen host:port setelah
-// network tool sederhana (mis. "nc host 1234").
+// extractHosts menarik host dari URL eksplisit. Host tujuan tanpa URL tidak
+// dianggap tepercaya oleh parser command.
 func (p *Policy) extractHosts(cmd string) []string {
 	seen := map[string]struct{}{}
 	var hosts []string
